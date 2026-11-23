@@ -24,7 +24,7 @@ export function screenText(raw) {
 function readScreen(channel, title, key) {
   return new Promise((resolve, reject) => {
     let buffer = '';
-    const timer = setTimeout(() => finish(new Error('Tempo limite aguardando a tela ' + title)), 4500);
+    const timer = setTimeout(() => finish(new Error('Timed out waiting for screen ' + title)), 4500);
     function finish(error, result) {
       clearTimeout(timer);
       channel.off('data', onData).off('close', onClose).off('error', finish);
@@ -32,18 +32,18 @@ function readScreen(channel, title, key) {
       else resolve(result);
     }
     function onClose() {
-      finish(new Error('Sessão SSH encerrada antes de receber ' + title));
+      finish(new Error('SSH session closed before receiving ' + title));
     }
     function onData(chunk) {
       buffer += chunk.toString('utf8');
-      if (buffer.length > 128 * 1024) return finish(new Error('Tela excedeu o limite de leitura'));
+      if (buffer.length > 128 * 1024) return finish(new Error('CLI screen exceeded the read limit'));
       const screen = screenText(buffer);
       const lines = screen.split('\n');
       if (lines.at(-1) !== prompt) return;
       const titleIndex = lines.findIndex(line => line === title ||
         line.startsWith(title + ' (') || line.startsWith(title + '  '));
       if (titleIndex < 0 || !/^GWN7672\([^)]*\) - /m.test(screen)) {
-        return finish(new Error('Tela inesperada durante a navegação para ' + title));
+        return finish(new Error('Unexpected CLI screen while navigating to ' + title));
       }
       finish(null, lines.slice(titleIndex, -1).join('\n'));
     }
@@ -62,12 +62,12 @@ export function query(section) {
 }
 
 async function readSection(section) {
-  if (!Object.hasOwn(menu, section)) throw new Error('Consulta desconhecida');
+  if (!Object.hasOwn(menu, section)) throw new Error('Unknown query');
   const privateKey = process.env.GWN_SSH_KEY
     ? await readFile(process.env.GWN_SSH_KEY) : undefined;
   const password = process.env.GWN_SSH_PASSWORD || undefined;
   if (!privateKey && !password) {
-    throw new Error('Configure GWN_SSH_KEY ou forneça GWN_SSH_PASSWORD no ambiente do processo');
+    throw new Error('Set GWN_SSH_KEY or GWN_SSH_PASSWORD in the server process environment');
   }
   const { host, port, username, fingerprint } = await readDevice();
   const connection = new ssh2.Client();
@@ -108,7 +108,7 @@ async function readSection(section) {
     }
     return { section, collectedAt: new Date().toISOString(), summary: summarize(section, screen), screen };
   } catch (error) {
-    if (mismatchedKey) throw new Error('A chave SSH do AP não coincide com a fingerprint fixada');
+    if (mismatchedKey) throw new Error('The AP SSH host key does not match the pinned fingerprint');
     throw error;
   } finally {
     clearTimeout(deadline);
@@ -122,18 +122,18 @@ async function readDevice() {
   try {
     device = JSON.parse(await readFile(deviceFile, 'utf8'));
   } catch {
-    throw new Error('Crie device.local.json com o endereço e a fingerprint SSH verificada do AP');
+    throw new Error('Create device.local.json with the AP address and independently verified SSH host fingerprint');
   }
   const { host, port = 22, username = 'admin', fingerprint } = device ?? {};
   if (typeof host !== 'string' || !host || host !== host.trim() ||
       typeof username !== 'string' || !username || username !== username.trim() ||
       !Number.isInteger(port) || port < 1 || port > 65535 ||
       typeof fingerprint !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/.test(fingerprint)) {
-    throw new Error('Configuração inválida em device.local.json');
+    throw new Error('Invalid device.local.json configuration');
   }
   const digest = Buffer.from(fingerprint.slice(7), 'base64');
   if (digest.toString('base64').replace(/=+$/, '') !== fingerprint.slice(7)) {
-    throw new Error('Fingerprint SHA-256 inválida em device.local.json');
+    throw new Error('Invalid SHA-256 fingerprint in device.local.json');
   }
   return { host, port, username, fingerprint: digest };
 }
@@ -141,9 +141,9 @@ async function readDevice() {
 async function paginate(channel, title, screen) {
   let tail = screen;
   for (let page = 1; /^\[x\]\s*Back[^\n]*\[n\]\s*Next Page/im.test(tail); page++) {
-    if (page >= 20) throw new Error('A lista excedeu o limite de 20 páginas');
+    if (page >= 20) throw new Error('The list exceeded the 20-page limit');
     const next = await readScreen(channel, title, 'n');
-    if (next === tail) throw new Error('A CLI repetiu a página');
+    if (next === tail) throw new Error('The CLI repeated a page');
     screen += '\n\n' + next;
     tail = next;
   }

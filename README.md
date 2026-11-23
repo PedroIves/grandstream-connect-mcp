@@ -1,74 +1,102 @@
-# MCP Grandstream GWN7672
+# Grandstream Connect MCP
 
-Servidor MCP de consulta para o Grandstream GWN7672. Usa o SDK oficial do MCP sobre **stdio** e SSH com PTY. A implementação foi validada nos menus do firmware `1.0.25.7` e verifica a fingerprint SHA-256 configurada para o equipamento.
+Read live status, Wi-Fi clients, SSIDs, and radio settings from a Grandstream GWN7672 using Claude Code, Codex, or another MCP client. The server connects directly to the access point over SSH and uses only predefined read-only menu paths.
 
-## Instalação e teste
+**Requirements** · Node.js 22+ · SSH access to your GWN7672 · A verified SSH host fingerprint · An authorized SSH credential
 
-Node.js 22 ou superior. Execute na pasta do pacote:
+Tested against the GWN7672 interactive CLI on firmware `1.0.25.7`. Other firmware versions may expose different menus.
 
-```powershell
-npm.cmd ci --ignore-scripts
-npm.cmd run profiles
-npm.cmd test
+## Install
+
+Clone the repository on the computer that runs your MCP client and can reach the AP:
+
+```sh
+git clone https://github.com/PedroIves/grandstream-connect-mcp.git
+cd grandstream-connect-mcp
+npm ci --ignore-scripts
+npm test
 ```
 
-Copie `device.example.json` para `device.local.json` e informe o endereço, porta, usuário e a fingerprint SSH conferida por uma fonte confiável. O arquivo local é ignorado pelo Git. O servidor encerra a conexão diante de uma chave diferente.
+Copy `device.example.json` to `device.local.json` from your editor, or run `cp device.example.json device.local.json` in a POSIX shell. In Windows PowerShell, use `Copy-Item device.example.json device.local.json`. Edit the file with your AP host, SSH port, SSH username, and verified `SHA256:…` host fingerprint. The fingerprint must come from a trusted source, such as a previously verified OpenSSH `known_hosts` entry. The server rejects mismatches. Git ignores the local device file.
 
-Os perfis usam caminhos absolutos. Gere-os de novo se mover a pasta ou trocar de computador. O servidor escreve apenas MCP em stdout.
+### Authenticate and verify the connection
 
-### Autenticação
+Set `GWN_SSH_KEY` to the absolute path of a private key already authorized on the AP. An encrypted key also requires `GWN_SSH_KEY_PASSPHRASE` in the MCP process environment. For password authentication, supply `GWN_SSH_PASSWORD` through the launching process environment. Keep credentials out of the repository and client configuration files.
 
-Para uso contínuo, configure `GWN_SSH_KEY` com o caminho de uma chave já autorizada no AP. Se for protegida por frase secreta, o processo também aceita `GWN_SSH_KEY_PASSPHRASE`. O servidor lê a chave diretamente. O suporte anunciado a chaves pelo SSH do AP não garante que a chave do Windows esteja autorizada. A autorização de uma nova chave depende de um procedimento compatível com o firmware e de aprovação para alterar o AP.
-
-Para teste temporário no Windows, use o prompt oculto abaixo. Inicie o agente a partir desse mesmo ambiente, se ele repassar a variável ao processo MCP. Aplicativos já abertos podem exigir encerramento completo e nova abertura nesse ambiente. No Codex, o perfil inclui a lista explícita de variáveis repassadas.
+On Windows, a one-session password test can use a hidden prompt:
 
 ```powershell
-$gwnCredential = Read-Host 'Senha SSH temporária do Grandstream' -AsSecureString
-$gwnPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($gwnCredential)
+$credential = Read-Host 'Grandstream SSH password' -AsSecureString
 try {
-    $env:GWN_SSH_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($gwnPointer)
+    $env:GWN_SSH_PASSWORD = [System.Net.NetworkCredential]::new('', $credential).Password
     npm.cmd run test:live
 } finally {
     Remove-Item Env:GWN_SSH_PASSWORD -ErrorAction SilentlyContinue
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($gwnPointer)
-    $gwnCredential.Dispose()
+    $credential.Dispose()
 }
 ```
 
-O servidor aceita a senha temporária no ambiente do processo. Deixe o campo de senha fora dos arquivos JSON, TOML e do histórico de comandos. Para clientes que filtram o ambiente, configure o caminho não secreto de uma chave já autorizada na entrada do MCP.
+The live test starts the MCP server and calls all seven tools against your AP. `npm test` checks the MCP transport and tool catalog without connecting to the device. To use a temporary password from your agent, launch the agent from an environment that passes the variable to its MCP child process.
 
-## Integração com os agentes
+## Claude Code
 
-Para experimentar sem mudar sua configuração global, abra esta pasta como projeto no agente. Gere as configurações locais com `npm.cmd run profiles -- --workspace`. Para OpenCode V1, acrescente `--opencode-v1` na primeira geração. Se o agente pedir confiança para o projeto, revise a entrada e habilite-a.
+From the cloned directory, run either of the following blocks. Both register the server for your local Claude Code user. The absolute paths allow it to start from other projects.
 
-Mescle somente a entrada `grandstream_gwn7672` no arquivo ativo do agente. Preserve os servidores já cadastrados. Reabra a sessão do agente após salvar.
+**Windows PowerShell**
 
-| Cliente | Perfil e local |
-|---|---|
-| Codex | `profiles/codex.toml`. Adicione a seção ao `config.toml` da instância do Codex ou use a seção MCP nas configurações do app. |
-| ZCode | `profiles/zcode.json` para `mcp.servers` em `~/.zcode/cli/config.json` ou no `.zcode/config.json` do projeto. Pela interface, use **Settings → MCP Servers → New → JSON** com o perfil `antigravity.json`, que usa o formato de importação `mcpServers`. |
-| OpenCode | `profiles/opencode-v2.json` para `mcp.servers`. Em releases V1, use `profiles/opencode-v1.json`. Mescle no `opencode.json(c)` ativo e confirme com `opencode mcp list`. |
-| Antigravity | `profiles/antigravity.json`. No IDE, abra **MCP Servers → Manage MCP Servers → View raw config** para identificar o arquivo ativo da instalação. O CLI também aceita `.agents/mcp_config.json` no projeto. |
-| T3 Code | Com o provedor **Codex**, use o mesmo perfil Codex no diretório de configuração ativo. No provedor **Antigravity ACP**, há instalações em que o runtime lê `profiles/antigravity.json` no `config/mcp_config.json` do perfil do provedor em T3. A localização depende da versão e do perfil. Valide em uma sessão nova do T3. |
+```powershell
+$nodePath = (Get-Command node.exe).Source
+$serverPath = (Resolve-Path ./server.mjs).Path
+claude mcp add --transport stdio --scope user grandstream_gwn7672 -- $nodePath $serverPath
+claude mcp list
+```
 
-Para o primeiro teste em cada agente, peça “Use grandstream_gwn7672 para consultar o modelo, firmware e portas Ethernet”. A descoberta das ferramentas independe do login no AP. A chamada de consulta precisa da credencial.
+**macOS or Linux**
 
-## Operação
+```sh
+claude mcp add --transport stdio --scope user grandstream_gwn7672 -- "$(command -v node)" "$PWD/server.mjs"
+claude mcp list
+```
 
-As ferramentas são `get_status`, `list_access_points`, `list_ssids`, `list_clients`, `get_radios`, `get_dhcp` e `get_mesh`. Cada resposta informa o horário em UTC, a tela normalizada e um resumo estruturado quando há campos reconhecidos. Os nomes de redes e clientes na tela são dados vindos do AP.
+For project scope, run `npm run profiles -- --workspace` and open the cloned folder in Claude Code. The generator creates `.mcp.json` if it does not exist. For another project, merge the entry from `profiles/claude-code.json` into its `.mcp.json`. Approve the project server when Claude Code prompts you.
 
-O servidor fixa o destino e a chave SSH, usa rotas de menu predefinidas, valida a tela antes de enviar a próxima seleção e limita tempo e paginação. A sessão SSH termina após cada consulta. A medição de ocupação de banda pode afetar o Wi-Fi e está fora do MCP. Uma alteração de firmware ou de chave exige revisar a compatibilidade ou conferir a identidade atual por uma fonte independente, conforme o caso.
+In a new session, use `/mcp` to check the connection and try:
 
-### Acesso fora da rede local
+> Use Grandstream Connect MCP to show the access point firmware, uptime, and Ethernet link status.
 
-Se o agente roda na rede local e só o modelo está na nuvem, o servidor MCP continua local. Se o agente roda em outro computador, execute este mesmo pacote lá e forneça uma rota privada até o AP, por exemplo uma VPN com roteamento da sub-rede. A rede remota precisa alcançar a porta SSH configurada via esse túnel. O pacote usa stdio. Valide a conexão a partir da máquina remota antes de ativar o MCP nela.
+A connected MCP status confirms the server started. A successful tool call also requires SSH reachability and valid credentials. [Claude Code MCP documentation](https://code.claude.com/docs/en/mcp)
 
-### Referências
+## Other MCP clients
 
-- [Grandstream GWN76xx Command Line Guide](https://documentation.grandstream.com/knowledge-base/gwn76xx-command-line-guide/)
-- [Grandstream GWN API Guide](https://documentation2.grandstream.com/knowledge-base/gwn-api-guide/)
-- [ZCode MCP](https://zcode.z.ai/en/docs/mcp-services)
-- [OpenCode MCP](https://opencode.ai/docs/mcp-servers/)
-- [Antigravity MCP](https://antigravity.google/docs/mcp?tab=ide)
-- [T3 Code e o provedor Codex](https://github.com/pingdotgg/t3code/blob/main/docs/user/providers-codex.md)
-- [Discussão do T3 Code sobre MCP no provedor Antigravity ACP](https://github.com/pingdotgg/t3code/discussions/13117)
+Run `npm run profiles` to generate the following client configurations. Merge only the `grandstream_gwn7672` entry into your active client configuration. If you move the clone, regenerate the profiles and update the command path.
+
+| Client | Profile and configuration |
+| --- | --- |
+| Codex | `profiles/codex.toml` → the active Codex `config.toml`. |
+| ZCode | `profiles/zcode.json` → `mcp.servers` in `~/.zcode/cli/config.json` or `.zcode/config.json`. |
+| OpenCode | `profiles/opencode-v2.json` → `mcp.servers`. For V1 use `profiles/opencode-v1.json` → `mcp`. |
+| Antigravity | `profiles/antigravity.json` → the file shown by **Manage MCP Servers → View raw config**. |
+| T3 Code | Use the Codex profile with its Codex provider. Some Antigravity ACP installations read the Antigravity profile from the provider's `config/mcp_config.json`. Confirm the configuration in a new T3 session. |
+
+If a client filters environment variables, explicitly allow the required variables or configure the non-secret `GWN_SSH_KEY` path in its MCP environment settings. The MCP server can run on another machine with a private route to the AP, such as a VPN. It uses local stdio and requires no public SSH or MCP endpoint.
+
+## Available tools
+
+| Tool | Returns |
+| --- | --- |
+| `get_status` | Model, firmware, uptime, role, and Ethernet link state |
+| `list_access_points` | Paired AP inventory and online/offline counts |
+| `list_ssids` | Configured SSIDs, status, VLAN, and visibility |
+| `list_clients` | Associated clients, channels, RSSI, and link rates reported by the AP |
+| `get_radios` | Radio settings, including configured width and transmit power |
+| `get_dhcp` | DHCP status and configured VLANs |
+| `get_mesh` | Mesh configuration |
+
+Responses include the collection time in UTC, normalized CLI text, and a structured summary when fields are recognized. The AP's own CLI text is returned in its original language. The server bounds SSH sessions and pagination, checks screen titles before navigating, and excludes actions such as reboot, configuration edits, and band utilization measurement.
+
+## Troubleshooting
+
+- **Client cannot start the server:** run `npm test` from the clone, check Node.js 22 or later, and check the absolute Node and server paths in the client.
+- **Server is connected but the tool call fails:** check `device.local.json`, the SSH port, and whether the MCP process receives the credential. Run `npm run test:live` to isolate the SSH path.
+- **SSH host key mismatch:** verify the new fingerprint independently before changing the local device file.
+- **Unexpected CLI screen:** confirm the AP model, firmware, and role. See the [Grandstream GWN76xx CLI guide](https://documentation.grandstream.com/knowledge-base/gwn76xx-command-line-guide/).

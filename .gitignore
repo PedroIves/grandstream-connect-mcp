@@ -4,6 +4,7 @@ profiles/
 .agents/
 .codex/
 .zcode/
+.mcp.json
 opencode.json
 *.log
 .env*

@@ -19,13 +19,14 @@ const profiles = {
   'opencode-v1.json': { mcp: { [server]: openCode } },
   'opencode-v2.json': { mcp: { servers: { [server]: openCode } } },
   'antigravity.json': { mcpServers: { [server]: stdio } },
+  'claude-code.json': { mcpServers: { [server]: { type: 'stdio', ...stdio } } },
 };
 await mkdir(folder, { recursive: true });
 const serialize = profile => typeof profile === 'string' ? profile : JSON.stringify(profile, null, 2) + '\n';
 for (const [name, profile] of Object.entries(profiles)) {
   await writeFile(new URL(name, folder), serialize(profile));
 }
-console.log('Perfis gerados em ' + fileURLToPath(folder));
+console.log('Profiles written to ' + fileURLToPath(folder));
 
 if (process.argv.includes('--workspace')) {
   const openCodeVersion = process.argv.includes('--opencode-v1') ? 'v1' : 'v2';
@@ -33,6 +34,7 @@ if (process.argv.includes('--workspace')) {
     '.codex/config.toml': 'codex.toml',
     '.zcode/config.json': 'zcode.json',
     '.agents/mcp_config.json': 'antigravity.json',
+    '.mcp.json': 'claude-code.json',
     'opencode.json': 'opencode-' + openCodeVersion + '.json',
   };
   for (const [destination, name] of Object.entries(workspace)) {
@@ -41,11 +43,11 @@ if (process.argv.includes('--workspace')) {
     await mkdir(new URL('.', target), { recursive: true });
     try {
       await writeFile(target, content, { flag: 'wx' });
-      console.log('Criado: ' + destination);
+      console.log('Created: ' + destination);
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
       if (await readFile(target, 'utf8') !== content) {
-        console.error('Arquivo existente preservado. Mescle profiles/' + name + ' em ' + destination);
+        console.error('Existing file preserved. Merge profiles/' + name + ' into ' + destination);
       }
     }
   }
