@@ -63,6 +63,29 @@ export function query(section) {
 
 async function readSection(section) {
   if (!Object.hasOwn(menu, section)) throw new Error('Unknown query');
+  const { channel, close } = await openCli();
+  const deadline = setTimeout(close, 20000);
+  try {
+    await readScreen(channel, 'Main Menu');
+    const [key, title] = menu[section];
+    let screen = await readScreen(channel, title, key);
+    if (section === 'access_points') {
+      const inventory = await readScreen(channel, 'Paired Devices', '1');
+      screen += '\n\n' + inventory;
+    }
+    if (section === 'access_points' || section === 'clients' ||
+        section === 'ssids' || section === 'dhcp') {
+      const listTitle = section === 'access_points' ? 'Paired Devices' : title;
+      screen = await paginate(channel, listTitle, screen);
+    }
+    return { section, collectedAt: new Date().toISOString(), summary: summarize(section, screen), screen };
+  } finally {
+    clearTimeout(deadline);
+    close();
+  }
+}
+
+export async function openCli() {
   const privateKey = process.env.GWN_SSH_KEY
     ? await readFile(process.env.GWN_SSH_KEY) : undefined;
   const password = process.env.GWN_SSH_PASSWORD || undefined;
@@ -71,7 +94,7 @@ async function readSection(section) {
   }
   const { host, port, username, fingerprint } = await readDevice();
   const connection = new ssh2.Client();
-  const deadline = setTimeout(() => connection.destroy(), 20000);
+  const deadline = setTimeout(() => connection.destroy(), 12000);
   let mismatchedKey = false;
   let channel;
   try {
@@ -94,26 +117,13 @@ async function readSection(section) {
       });
     });
     channel.on('error', () => {});
-    await readScreen(channel, 'Main Menu');
-    const [key, title] = menu[section];
-    let screen = await readScreen(channel, title, key);
-    if (section === 'access_points') {
-      const inventory = await readScreen(channel, 'Paired Devices', '1');
-      screen += '\n\n' + inventory;
-    }
-    if (section === 'access_points' || section === 'clients' ||
-        section === 'ssids' || section === 'dhcp') {
-      const listTitle = section === 'access_points' ? 'Paired Devices' : title;
-      screen = await paginate(channel, listTitle, screen);
-    }
-    return { section, collectedAt: new Date().toISOString(), summary: summarize(section, screen), screen };
+    return { channel, target: host + ':' + port, close: () => connection.destroy() };
   } catch (error) {
+    connection.destroy();
     if (mismatchedKey) throw new Error('The AP SSH host key does not match the pinned fingerprint');
     throw error;
   } finally {
     clearTimeout(deadline);
-    channel?.close();
-    connection.end();
   }
 }
 

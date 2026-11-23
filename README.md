@@ -1,6 +1,6 @@
 # Grandstream Connect MCP
 
-Read live status, Wi-Fi clients, SSIDs, and radio settings from a Grandstream GWN7672 using Claude Code, Codex, or another MCP client. The server connects directly to the access point over SSH and uses only predefined read-only menu paths.
+Read live status, Wi-Fi clients, SSIDs, and radio settings from a Grandstream GWN7672 using Claude Code, Codex, or another MCP client. The server connects directly to the access point over SSH. It starts in read-only mode and can optionally expose an operator-approved session for the interactive Grandstream CLI.
 
 **Requirements** · Node.js 22+ · SSH access to your GWN7672 · A verified SSH host fingerprint · An authorized SSH credential
 
@@ -92,7 +92,26 @@ If a client filters environment variables, explicitly allow the required variabl
 | `get_dhcp` | DHCP status and configured VLANs |
 | `get_mesh` | Mesh configuration |
 
-Responses include the collection time in UTC, normalized CLI text, and a structured summary when fields are recognized. The AP's own CLI text is returned in its original language. The server bounds SSH sessions and pagination, checks screen titles before navigating, and excludes actions such as reboot, configuration edits, and band utilization measurement.
+Responses include the collection time in UTC, normalized CLI text, and a structured summary when fields are recognized. The AP's own CLI text is returned in its original language. Automatic queries use predefined menu paths and exclude maintenance actions and band utilization measurements.
+
+## Interactive administration
+
+Set `GWN_ENABLE_ADMIN=1` in the MCP server's environment and reconnect the client. Administration requires a client that can show **MCP form elicitation** to the operator. A client without that capability can still use all seven read-only tools. When using the generated Codex profile, start Codex from an environment where the opt-in and SSH credential variables are available. Allow at least 120 seconds per administrative tool call in clients that expose a timeout setting.
+
+| Tool | Purpose |
+| --- | --- |
+| `admin_open_session` | Open a pinned SSH session and verify the GWN7672 main menu. |
+| `admin_read_screen` | Read the latest CLI output and screen revision. |
+| `admin_send_input` | Propose one printable line followed by Enter. The client must present the exact line for operator approval. |
+| `admin_close_session` | Close the session. |
+
+Use the actual menu on the device to navigate SSIDs, AP membership, clients and banned clients, DHCP/VLAN, mesh, email, maintenance, radios, access lists, rogue APs, and diagnostics. For example, to configure an SSID, open the session, inspect the menu, then propose the SSIDs selection shown on that screen. Read the resulting screen before proposing each subsequent selection, field value, or save. The current firmware and AP role determine the available actions. The [Grandstream CLI guide](https://documentation.grandstream.com/knowledge-base/gwn76xx-command-line-guide/) documents menu behavior, and the [GWN76xx manual](https://documentation.grandstream.com/knowledge-base/gwn76xx-user-manual/) explains configuration fields.
+
+An approval covers exactly one input for the current screen revision. If the screen changes during the approval, read it again. Sessions expire after two minutes of inactivity or twenty minutes in total. If the AP disconnects, reboots, or does not return a stable screen, verify the outcome before trying the action again.
+
+Use the Grandstream UI or a private SSH terminal for password entry and credential changes. MCP inputs and CLI output can appear in the client transcript. The server masks common labeled secrets as a convenience. Use interactive administration only in trusted clients that actually show elicitation to a human operator.
+
+The administrative workflow is tested with simulated CLI responses. Menu sequences that change AP settings have not been verified on live hardware. This mode provides access to the firmware's interactive SSH menu, whose coverage can differ from the embedded web UI or controller API.
 
 ## Troubleshooting
 
