@@ -1,0 +1,21 @@
+{
+  "name": "grandstream-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP local de consulta para Grandstream GWN7672",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node check.mjs",
+    "test:live": "node check.mjs --live",
+    "profiles": "node profiles.mjs"
+  },
+  "keywords": [],
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "ssh2": "1.17.0",
+    "zod": "4.6.7"
+  }
+}

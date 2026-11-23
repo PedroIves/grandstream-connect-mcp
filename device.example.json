@@ -1,0 +1,6 @@
+{
+  "host": "192.0.2.10",
+  "port": 22,
+  "username": "admin",
+  "fingerprint": "SHA256:SUBSTITUA_PELA_FINGERPRINT_VERIFICADA_DO_AP"
+}

@@ -1,0 +1,9 @@
+node_modules/
+device.local.json
+profiles/
+.agents/
+.codex/
+.zcode/
+opencode.json
+*.log
+.env*
